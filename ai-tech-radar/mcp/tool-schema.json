@@ -1,0 +1,31 @@
+[
+  {
+    "name": "get_top_technologies",
+    "description": "Return the current AI Technology Radar ranking (highest radar score first). Optional filters by category or stage.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "limit": {"type": "integer", "description": "Number of results, 1-50 (default 10)"},
+        "category": {"type": "string", "description": "e.g. Agentic AI, Foundation Models, AI Security & Governance"},
+        "stage": {"type": "string", "description": "Breakout, Emerging, Rising, Mainstream, Stable or Cooling"}
+      }
+    }
+  },
+  {
+    "name": "get_technology_trend",
+    "description": "Return the 14-day daily signal, momentum z-score, stage and 7-day forecast for one AI technology.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {"name": {"type": "string", "description": "Technology name, e.g. Model Context Protocol (MCP)"}},
+      "required": ["name"]
+    }
+  },
+  {
+    "name": "get_emerging_signals",
+    "description": "Return early-signal technologies (Emerging/Breakout or newly discovered by AI) ordered by acceleration, plus the AI analyst briefing.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {"limit": {"type": "integer", "description": "Number of results, 1-50 (default 10)"}}
+    }
+  }
+]

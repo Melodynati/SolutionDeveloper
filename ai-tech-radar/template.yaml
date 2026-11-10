@@ -1,0 +1,355 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AI Technology Radar (sandbox lab) - collects public AI signals hourly, classifies them with
+  Amazon Bedrock, ranks and forecasts technology momentum, serves a dashboard, REST API and MCP tools.
+
+Parameters:
+  ModelId:
+    Type: String
+    Default: global.anthropic.claude-sonnet-5-5
+    Description: Bedrock model or inference-profile ID used for extraction and briefing. Swap for a cheaper model you have access to.
+  AlertEmail:
+    Type: String
+    Default: ""
+    Description: Optional email for breakout alerts (confirm the subscription email after deploy).
+  ScheduleRate:
+    Type: String
+    Default: rate(1 hour)
+    AllowedValues: [rate(15 minutes), rate(30 minutes), rate(1 hour), rate(3 hours)]
+  EnableBriefing:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+
+Conditions:
+  HasEmail: !Not [!Equals [!Ref AlertEmail, ""]]
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Architectures: [arm64]
+    CodeUri: src/
+    MemorySize: 512
+    Tracing: Active
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref Table
+        RAW_BUCKET: !Ref RawBucket
+        WEB_BUCKET: !Ref WebBucket
+        MODEL_ID: !Ref ModelId
+
+Resources:
+  # ---------------- Storage ----------------
+  RawBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      VersioningConfiguration: {Status: Enabled}
+      LifecycleConfiguration:
+        Rules:
+          - Id: raw-tiering
+            Status: Enabled
+            Prefix: raw/
+            Transitions: [{StorageClass: STANDARD_IA, TransitionInDays: 30}]
+            ExpirationInDays: 365
+          - Id: old-versions
+            Status: Enabled
+            NoncurrentVersionExpiration: {NoncurrentDays: 30}
+
+  RawBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref RawBucket
+      PolicyDocument:
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource: [!GetAtt RawBucket.Arn, !Sub "${RawBucket.Arn}/*"]
+            Condition: {Bool: {aws:SecureTransport: "false"}}
+
+  WebBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+
+  WebBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebBucket
+      PolicyDocument:
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal: {Service: cloudfront.amazonaws.com}
+            Action: s3:GetObject
+            Resource: !Sub "${WebBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource: [!GetAtt WebBucket.Arn, !Sub "${WebBucket.Arn}/*"]
+            Condition: {Bool: {aws:SecureTransport: "false"}}
+
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: pk, AttributeType: S}
+        - {AttributeName: sk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: pk, KeyType: HASH}
+        - {AttributeName: sk, KeyType: RANGE}
+      TimeToLiveSpecification: {AttributeName: expires, Enabled: true}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+      SSESpecification: {SSEEnabled: true}
+
+  # ---------------- Dashboard (private bucket behind CloudFront OAC) ----------------
+  OAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: AI Tech Radar dashboard
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        PriceClass: PriceClass_200   # includes Asia edge locations
+        Origins:
+          - Id: web
+            DomainName: !GetAtt WebBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt OAC.Id
+            S3OriginConfig: {OriginAccessIdentity: ""}
+        DefaultCacheBehavior:
+          TargetOriginId: web
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6          # Managed-CachingOptimized
+          ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # Managed-SecurityHeadersPolicy
+        CacheBehaviors:
+          - PathPattern: data/*
+            TargetOriginId: web
+            ViewerProtocolPolicy: redirect-to-https
+            Compress: true
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad        # Managed-CachingDisabled (fresh data)
+            ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03
+
+  # ---------------- Alerts ----------------
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      KmsMasterKeyId: alias/aws/sns
+
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasEmail
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  ScheduleDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600
+
+  # ---------------- Compute ----------------
+  CollectorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: collector.handler
+      Timeout: 900
+      ReservedConcurrentExecutions: 1   # never overlap runs
+      Environment:
+        Variables:
+          RANKER_FUNCTION: !Ref RankerFunction
+          USE_BEDROCK: "true"
+      Policies:
+        - DynamoDBCrudPolicy: {TableName: !Ref Table}
+        - S3WritePolicy: {BucketName: !Ref RawBucket}
+        - LambdaInvokePolicy: {FunctionName: !Ref RankerFunction}
+        - Statement:
+            - Effect: Allow
+              Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+              Resource:
+                - arn:aws:bedrock:*::foundation-model/*
+                - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action: cloudwatch:PutMetricData
+              Resource: "*"
+              Condition: {StringEquals: {cloudwatch:namespace: AITechRadar}}
+      Events:
+        Hourly:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: !Ref ScheduleRate
+            RetryPolicy: {MaximumRetryAttempts: 1, MaximumEventAgeInSeconds: 3600}
+            DeadLetterConfig: {Arn: !GetAtt ScheduleDLQ.Arn}
+
+  RankerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: ranker.handler
+      Timeout: 300
+      Environment:
+        Variables:
+          ALERT_TOPIC_ARN: !Ref AlertTopic
+          ENABLE_BRIEFING: !Ref EnableBriefing
+      Policies:
+        - DynamoDBReadPolicy: {TableName: !Ref Table}
+        - S3CrudPolicy: {BucketName: !Ref WebBucket}
+        - S3WritePolicy: {BucketName: !Ref RawBucket}
+        - SNSPublishMessagePolicy: {TopicName: !GetAtt AlertTopic.TopicName}
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource:
+                - arn:aws:bedrock:*::foundation-model/*
+                - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: api.handler
+      Timeout: 10
+      MemorySize: 256
+      Policies:
+        - S3ReadPolicy: {BucketName: !Ref WebBucket}
+      Events:
+        Rankings: {Type: HttpApi, Properties: {ApiId: !Ref HttpApi, Path: /rankings, Method: GET}}
+        Tech: {Type: HttpApi, Properties: {ApiId: !Ref HttpApi, Path: "/tech/{name}", Method: GET}}
+        Health: {Type: HttpApi, Properties: {ApiId: !Ref HttpApi, Path: /health, Method: GET}}
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+      CorsConfiguration:
+        AllowMethods: [GET]
+        AllowOrigins: ["*"]
+
+  # ---------------- Observability ----------------
+  CollectorLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: !Sub "/aws/lambda/${CollectorFunction}", RetentionInDays: !Ref LogRetentionDays}
+  RankerLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: !Sub "/aws/lambda/${RankerFunction}", RetentionInDays: !Ref LogRetentionDays}
+  ApiLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: !Sub "/aws/lambda/${ApiFunction}", RetentionInDays: !Ref LogRetentionDays}
+
+  CollectorErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Collector Lambda errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{Name: FunctionName, Value: !Ref CollectorFunction}]
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  ExtractFallbackAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Bedrock extraction failing - pipeline running on keyword fallback
+      Namespace: AITechRadar
+      MetricName: ExtractFallbackBatches
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  SourcesFailedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Two or more public sources failing
+      Namespace: AITechRadar
+      MetricName: SourcesFailed
+      Statistic: Maximum
+      Period: 3600
+      EvaluationPeriods: 3
+      Threshold: 2
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  ScheduleDLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Scheduled runs landing in DLQ
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions: [{Name: QueueName, Value: !GetAtt ScheduleDLQ.QueueName}]
+      Statistic: Maximum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+Outputs:
+  DashboardUrl:
+    Value: !Sub "https://${Distribution.DomainName}"
+  ApiUrl:
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  WebBucketName:
+    Value: !Ref WebBucket
+  RawBucketName:
+    Value: !Ref RawBucket
+  TableName:
+    Value: !Ref Table
+  CollectorFunctionName:
+    Value: !Ref CollectorFunction
+  ApiFunctionArn:
+    Description: Use as the Lambda target when you create the AgentCore Gateway (MCP)
+    Value: !GetAtt ApiFunction.Arn
+  AlertTopicArn:
+    Value: !Ref AlertTopic

@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Tech Radar</title>
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f6f5f2; --surface:#fcfcfb; --surface-2:#f0efec; --border:#e3e2dd;
+  --text:#0b0b0b; --text-2:#52514e; --muted:#7a7974;
+  --series:#2a78d6; --series-soft:#cde2fb; --grid:#e6e5e0;
+  --good:#0ca30c; --critical:#d03b3b;
+  --radius:10px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#121211; --surface:#1a1a19; --surface-2:#232321; --border:#2e2e2b;
+    --text:#f0efec; --text-2:#c3c2b7; --muted:#8f8e86;
+    --series:#3987e5; --series-soft:#184f95; --grid:#2c2c29;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#121211; --surface:#1a1a19; --surface-2:#232321; --border:#2e2e2b;
+  --text:#f0efec; --text-2:#c3c2b7; --muted:#8f8e86;
+  --series:#3987e5; --series-soft:#184f95; --grid:#2c2c29;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 16px 48px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 16px;margin-bottom:18px}
+h1{font-size:22px;margin:0;letter-spacing:-.01em}
+.sub{color:var(--text-2);font-size:13px}
+.banner{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:14px;color:var(--text-2);font-size:13px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px}
+.kpi .v{font-size:26px;font-weight:650;font-variant-numeric:tabular-nums}
+.kpi .l{color:var(--text-2);font-size:12px}
+.brief{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px}
+.brief h2{font-size:13px;margin:0 0 6px;color:var(--text-2);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.brief p{margin:0;white-space:pre-wrap}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;align-items:center}
+select,input{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 10px}
+input{min-width:180px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:760px}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);vertical-align:middle}
+th{font-size:12px;color:var(--text-2);font-weight:600;background:var(--surface);position:sticky;top:0;cursor:pointer;user-select:none;white-space:nowrap}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:none}
+tr.row{cursor:pointer} tr.row:hover td{background:var(--surface-2)}
+.tech{font-weight:600}.cat{color:var(--muted);font-size:12px}
+.new{font-size:11px;border:1px solid var(--border);border-radius:99px;padding:1px 7px;margin-left:6px;color:var(--text-2)}
+.stage{display:inline-flex;gap:5px;align-items:center;font-size:12px;border:1px solid var(--border);border-radius:99px;padding:2px 9px;white-space:nowrap;background:var(--surface-2)}
+.bar{position:relative;height:8px;width:90px;background:var(--surface-2);border-radius:4px;display:inline-block;vertical-align:middle;margin-left:8px}
+.bar i{position:absolute;inset:0 auto 0 0;background:var(--series);border-radius:4px}
+.up{color:var(--good)} .down{color:var(--critical)}
+svg.spark{display:block}
+.tip{position:fixed;pointer-events:none;background:var(--text);color:var(--surface);padding:5px 8px;border-radius:6px;font-size:12px;opacity:0;transition:opacity .08s;z-index:10;white-space:nowrap}
+.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--text-2);font-size:12px;margin:10px 2px 0}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+.sw{width:18px;height:0;border-top:2px solid var(--series)} .sw.f{border-top-style:dashed}
+.method{color:var(--muted);font-size:12px;margin-top:14px}
+.detail td{background:var(--surface-2)}
+.detail .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 20px;font-size:13px}
+.detail b{display:block;font-size:11px;color:var(--text-2);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1>AI Tech Radar</h1><div class="sub">Which AI technologies are accelerating — ranked from public signals, forecast 7 days ahead</div></div>
+    <div class="sub" id="updated">Loading…</div>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+  <div class="kpis">
+    <div class="kpi"><div class="v" id="k-total">–</div><div class="l">Technologies tracked</div></div>
+    <div class="kpi"><div class="v" id="k-break">–</div><div class="l">▲▲ Breakout now</div></div>
+    <div class="kpi"><div class="v" id="k-emerg">–</div><div class="l">✦ Emerging (early signal)</div></div>
+    <div class="kpi"><div class="v" id="k-new">–</div><div class="l">New tech names found by AI</div></div>
+  </div>
+  <section class="brief" id="brief" hidden><h2>AI analyst briefing</h2><p id="brief-text"></p></section>
+  <div class="filters">
+    <input id="q" type="search" placeholder="Search technology…" aria-label="Search technology">
+    <select id="f-cat" aria-label="Category"><option value="">All categories</option></select>
+    <select id="f-stage" aria-label="Stage"><option value="">All stages</option></select>
+  </div>
+  <div class="panel">
+    <table>
+      <thead><tr>
+        <th data-k="rank" class="num">#</th><th data-k="tech">Technology</th><th data-k="stage">Stage</th>
+        <th data-k="score" class="num">Radar score</th><th>14 days + forecast</th>
+        <th data-k="z" class="num">Momentum (z)</th><th data-k="predicted_change_pct" class="num">Next 7 days</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <div class="legend"><span><i class="sw"></i>Observed daily signal</span><span><i class="sw f"></i>Forecast (Holt damped trend)</span>
+    <span>▲▲ Breakout · ▲ Rising · ✦ Emerging · ■ Mainstream · – Stable · ▼ Cooling</span></div>
+  <div class="method" id="method"></div>
+</div>
+<div class="tip" id="tip"></div>
+<script>
+const ICON={Breakout:"▲▲",Rising:"▲",Emerging:"✦",Mainstream:"■",Stable:"–",Cooling:"▼"};
+const $=s=>document.querySelector(s);
+let DATA=null, sortK="rank", sortDir=1, openTech=null;
+
+async function load(){
+  for(const [url,demo] of [["data/latest.json",false],["data/sample.json",true]]){
+    try{const r=await fetch(url,{cache:"no-store"}); if(r.ok){return [await r.json(),demo]}}catch(e){}
+  }
+  throw new Error("no data");
+}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+
+function spark(r,days){
+  const W=170,H=34,p=3, obs=r.daily, fc=r.forecast_7d, all=obs.concat(fc);
+  const max=Math.max(1,...all), n=all.length;
+  const x=i=>p+i*(W-2*p)/(n-1), y=v=>H-p-(v/max)*(H-2*p);
+  const path=a=>a.map((v,i)=>`${i?"L":"M"}${x(v[0]).toFixed(1)},${y(v[1]).toFixed(1)}`).join("");
+  const o=obs.map((v,i)=>[i,v]), f=[[obs.length-1,obs[obs.length-1]]].concat(fc.map((v,i)=>[obs.length+i,v]));
+  const pts=all.map((v,i)=>{const d=i<obs.length?days[i]:`forecast +${i-obs.length+1}d`;
+    return `<rect x="${(x(i)-(W-2*p)/(n-1)/2).toFixed(1)}" y="0" width="${((W-2*p)/(n-1)).toFixed(1)}" height="${H}" fill="transparent" data-t="${esc(d)}: ${v.toFixed(1)}"/>`}).join("");
+  return `<svg class="spark" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(r.tech)} trend">
+    <line x1="${p}" x2="${W-p}" y1="${H-p}" y2="${H-p}" stroke="var(--grid)"/>
+    <path d="${path(o)}" fill="none" stroke="var(--series)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${path(f)}" fill="none" stroke="var(--series)" stroke-width="2" stroke-dasharray="3 3" opacity=".75"/>
+    ${pts}</svg>`;
+}
+
+function render(){
+  const q=$("#q").value.toLowerCase(), c=$("#f-cat").value, s=$("#f-stage").value;
+  let rows=DATA.rankings.filter(r=>(!q||r.tech.toLowerCase().includes(q))&&(!c||r.category===c)&&(!s||r.stage===s));
+  rows.sort((a,b)=>{const A=a[sortK],B=b[sortK];return (typeof A==="string"?A.localeCompare(B):A-B)*sortDir});
+  const maxScore=Math.max(1,...DATA.rankings.map(r=>r.score));
+  $("#rows").innerHTML=rows.map(r=>{
+    const pc=r.predicted_change_pct, cls=pc>5?"up":pc<-5?"down":"";
+    const main=`<tr class="row" data-t="${esc(r.tech)}">
+      <td class="num">${r.rank}</td>
+      <td><span class="tech">${esc(r.tech)}</span>${r.is_new?'<span class="new">new</span>':""}<div class="cat">${esc(r.category)}</div></td>
+      <td><span class="stage">${ICON[r.stage]||""} ${esc(r.stage)}</span></td>
+      <td class="num">${r.score.toFixed(1)}<span class="bar"><i style="width:${(100*r.score/maxScore).toFixed(1)}%"></i></span></td>
+      <td>${spark(r,DATA.days)}</td>
+      <td class="num">${r.z>0?"+":""}${r.z.toFixed(2)}</td>
+      <td class="num ${cls}">${pc>0?"▲ +":pc<0?"▼ ":""}${pc.toFixed(1)}%</td></tr>`;
+    const det=openTech===r.tech?`<tr class="detail"><td></td><td colspan="6"><div class="grid">
+      <div><b>7-day signal</b>${r.total_7d}</div><div><b>Volume percentile</b>${(100*r.volume_pct).toFixed(0)}%</div>
+      <div><b>Source diversity</b>${(100*r.diversity).toFixed(0)}% of sources</div><div><b>Trend slope / day</b>${r.slope}</div>
+      <div><b>Forecast next 7 days</b>${r.forecast_7d.reduce((a,b)=>a+b,0).toFixed(1)}</div></div></td></tr>`:"";
+    return main+det;}).join("")||`<tr><td colspan="7" class="cat">No technologies match these filters.</td></tr>`;
+}
+
+function wire(){
+  document.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;sortDir=k===sortK?-sortDir:(k==="rank"||k==="tech"?1:-1);sortK=k;render()});
+  ["#q","#f-cat","#f-stage"].forEach(s=>$(s).addEventListener("input",render));
+  $("#rows").addEventListener("click",e=>{const tr=e.target.closest("tr.row");if(tr){openTech=openTech===tr.dataset.t?null:tr.dataset.t;render()}});
+  const tip=$("#tip");
+  document.addEventListener("mousemove",e=>{const t=e.target.closest&&e.target.closest("rect[data-t]");
+    if(t){tip.textContent=t.dataset.t;tip.style.left=(e.clientX+12)+"px";tip.style.top=(e.clientY-28)+"px";tip.style.opacity=1}else tip.style.opacity=0});
+}
+
+load().then(([d,demo])=>{
+  DATA=d;
+  if(demo){$("#banner").hidden=false;$("#banner").textContent="Showing demo data — run the collector once (Module 4) and real rankings replace this automatically."}
+  $("#updated").textContent="Updated "+new Date(d.generated_at).toLocaleString();
+  const R=d.rankings;
+  $("#k-total").textContent=R.length;
+  $("#k-break").textContent=R.filter(r=>r.stage==="Breakout").length;
+  $("#k-emerg").textContent=R.filter(r=>r.stage==="Emerging").length;
+  $("#k-new").textContent=R.filter(r=>r.is_new).length;
+  if(d.briefing){$("#brief").hidden=false;$("#brief-text").textContent=d.briefing}
+  [...new Set(R.map(r=>r.category))].sort().forEach(c=>$("#f-cat").insertAdjacentHTML("beforeend",`<option>${esc(c)}</option>`));
+  ["Breakout","Emerging","Rising","Mainstream","Stable","Cooling"].forEach(s=>$("#f-stage").insertAdjacentHTML("beforeend",`<option value="${s}">${ICON[s]} ${s}</option>`));
+  $("#method").textContent="Method: "+d.method+". Sources: Hacker News, GitHub, arXiv, Hugging Face (public APIs). Signals are indicators of attention, not market share.";
+  wire();render();
+}).catch(()=>{$("#updated").textContent="No data yet";$("#banner").hidden=false;$("#banner").textContent="No rankings found. Run the collector (Module 4), then refresh."});
+</script>
+</body>
+</html>
