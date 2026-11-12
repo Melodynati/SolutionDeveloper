@@ -40,6 +40,8 @@ TAXONOMY = {
     "Document AI / OCR": ("Data", ["ocr", "document ai", "document understanding", "pdf parsing"]),
     "Robotics / Embodied AI": ("Physical AI", ["robotics", "embodied", "humanoid", "vla model", "vision-language-action"]),
     "AI for Science": ("Applied AI", ["protein", "drug discovery", "materials discovery", "ai for science", "weather model"]),
+    "Thai-language LLMs": ("Foundation Models", ["thai llm", "thai language model", "openthaigpt", "typhoon llm"]),
+    "AI in Capital Markets": ("Applied AI", ["algorithmic trading", "ai trading", "fintech ai", "robo-advisor"]),
 }
 
 CATEGORIES = sorted({c for c, _ in TAXONOMY.values()})
