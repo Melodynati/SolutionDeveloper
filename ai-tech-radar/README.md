@@ -24,8 +24,8 @@ AgentCore Gateway  ─┴─▶ API Lambda (REST + 3 MCP tools)
 
 ## Deploy
 ```bash
-./scripts/deploy.sh ai-tech-radar us-east-1 you@example.com false   # keyword mode (AI off)
-./scripts/deploy.sh ai-tech-radar us-east-1 you@example.com true    # later, once Bedrock works
+./scripts/deploy.sh ai-tech-radar ap-southeast-2 you@example.com false   # keyword mode (AI off)
+./scripts/deploy.sh ai-tech-radar ap-southeast-2 you@example.com true    # later, once Bedrock works
 ```
 Then confirm the SNS subscription email and open the `DashboardUrl` output.
 

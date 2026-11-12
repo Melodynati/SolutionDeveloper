@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # One-command deploy for the AI Tech Radar lab.
 # Usage: ./scripts/deploy.sh [stack-name] [region] [alert-email] [use-bedrock true|false]
-# Example (keyword mode, AI off): ./scripts/deploy.sh ai-tech-radar us-east-1 you@example.com false
-# Turn AI on later:               ./scripts/deploy.sh ai-tech-radar us-east-1 you@example.com true
+# Example (keyword mode, AI off): ./scripts/deploy.sh ai-tech-radar ap-southeast-2 you@example.com false
+# Turn AI on later:               ./scripts/deploy.sh ai-tech-radar ap-southeast-2 you@example.com true
 set -euo pipefail
 STACK=${1:-ai-tech-radar}
-REGION=${2:-us-east-1}
+REGION=${2:-ap-southeast-2}
 EMAIL=${3:-}
 USE_BEDROCK=${4:-false}
 cd "$(dirname "$0")/.."

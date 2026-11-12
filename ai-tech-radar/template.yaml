@@ -207,7 +207,6 @@ Resources:
     Properties:
       Handler: collector.handler
       Timeout: 900
-      ReservedConcurrentExecutions: 1   # never overlap runs
       Environment:
         Variables:
           RANKER_FUNCTION: !Ref RankerFunction
