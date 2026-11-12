@@ -53,16 +53,8 @@ def _backfill_items(days):
     for d in range(days, 0, -1):
         start_ts = int((end - timedelta(days=d)).timestamp())
         stop_ts = int((end - timedelta(days=d - 1)).timestamp())
-        q = urllib.parse.urlencode({"query": "AI OR LLM OR agent OR model", "tags": "story",
-                                    "numericFilters": f"created_at_i>{start_ts},created_at_i<={stop_ts}",
-                                    "hitsPerPage": 150})
         try:
-            data = sources._get(f"https://hn.algolia.com/api/v1/search_by_date?{q}")
-            for h in data.get("hits", []):
-                items.append({"source": "hackernews", "id": f"hn:{h.get('objectID')}", "title": h.get("title") or "",
-                              "text": h.get("title") or "", "url": h.get("url") or "",
-                              "engagement": float((h.get("points") or 0) + 2 * (h.get("num_comments") or 0)),
-                              "published": h.get("created_at")})
+            items.extend(sources.hn_search(start_ts, stop_ts, per_term=100))
         except Exception as e:
             print(json.dumps({"level": "WARN", "msg": "backfill_hn_failed", "day": d, "error": str(e)[:200]}))
     try:

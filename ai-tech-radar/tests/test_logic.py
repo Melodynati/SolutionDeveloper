@@ -74,6 +74,31 @@ def test_extract_falls_back_on_error():
     assert out[0]["techs"] == ["Vector Databases"] and stats["fallback_batches"] == 1
 
 
+def test_sources_merge_and_dedupe():
+    """HN: one query per term, merged by story ID. GitHub: one query per topic, merged by repo."""
+    import sources
+    calls = []
+    def fake_get(url, headers=None, raw=False):
+        calls.append(url)
+        if "hn.algolia" in url:
+            return {"hits": [{"objectID": "1", "title": "New AI agent", "points": 10, "num_comments": 2},
+                             {"objectID": "2", "title": "LLM inference", "points": 5, "num_comments": 0}]}
+        return {"items": [{"full_name": "a/repo", "description": "mcp server", "topics": ["mcp"],
+                           "stargazers_count": 50}]}
+    real = sources._get
+    sources._get = fake_get
+    try:
+        hn = sources.collect_hackernews()
+        gh = sources.collect_github()
+    finally:
+        sources._get = real
+    assert len(hn) == 2 and {i["id"] for i in hn} == {"hn:1", "hn:2"}
+    assert len(gh) == 1 and gh[0]["id"] == "gh:a/repo"
+    assert all(" OR " not in c for c in calls)            # no OR queries (HTTP 422 / no matches)
+    assert sum("hn.algolia" in c for c in calls) == len(sources.HN_TERMS)
+    assert sum("api.github.com" in c for c in calls) == len(sources.GH_TOPICS)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

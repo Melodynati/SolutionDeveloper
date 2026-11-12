@@ -37,51 +37,71 @@ def _iso(dt):
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def collect_hackernews(since_hours=2, limit=100):
-    since = int((datetime.now(timezone.utc) - timedelta(hours=since_hours)).timestamp())
-    q = urllib.parse.urlencode({
-        "query": "AI OR LLM OR agent OR model",
-        "tags": "story",
-        "numericFilters": f"created_at_i>{since}",
-        "hitsPerPage": limit,
-    })
-    data = _get(f"https://hn.algolia.com/api/v1/search_by_date?{q}")
-    out = []
-    for h in data.get("hits", []):
-        title = h.get("title") or ""
-        out.append({
-            "source": "hackernews",
-            "id": f"hn:{h.get('objectID')}",
-            "title": title,
-            "text": title,
-            "url": h.get("url") or f"https://news.ycombinator.com/item?id={h.get('objectID')}",
-            "engagement": float((h.get("points") or 0) + 2 * (h.get("num_comments") or 0)),
-            "published": h.get("created_at"),
-        })
+# Algolia (HN search) has no OR operator in the query string: "AI OR LLM" would require every
+# word, including "OR". So we run one single-term query per keyword and merge by story ID.
+HN_TERMS = ["AI", "LLM", "GPT", "agent", "model", "Claude", "MCP"]
+
+# GitHub search does not allow OR between qualifiers such as topic: (HTTP 422), so one query per topic.
+GH_TOPICS = ["llm", "ai-agents", "generative-ai", "mcp"]
+
+
+def hn_search(start_ts, stop_ts=None, per_term=100):
+    """Hacker News stories created in (start_ts, stop_ts], merged across HN_TERMS."""
+    window = f"created_at_i>{start_ts}" + (f",created_at_i<={stop_ts}" if stop_ts else "")
+    seen, out = set(), []
+    for term in HN_TERMS:
+        q = urllib.parse.urlencode({"query": term, "tags": "story",
+                                    "numericFilters": window, "hitsPerPage": per_term})
+        data = _get(f"https://hn.algolia.com/api/v1/search_by_date?{q}")
+        for h in data.get("hits", []):
+            oid = h.get("objectID")
+            if not oid or oid in seen:
+                continue
+            seen.add(oid)
+            title = h.get("title") or ""
+            out.append({
+                "source": "hackernews",
+                "id": f"hn:{oid}",
+                "title": title,
+                "text": title,
+                "url": h.get("url") or f"https://news.ycombinator.com/item?id={oid}",
+                "engagement": float((h.get("points") or 0) + 2 * (h.get("num_comments") or 0)),
+                "published": h.get("created_at"),
+            })
     return out
 
 
-def collect_github(days=7, limit=50):
+def collect_hackernews(since_hours=2, per_term=50):
+    since = int((datetime.now(timezone.utc) - timedelta(hours=since_hours)).timestamp())
+    return hn_search(since, per_term=per_term)
+
+
+def collect_github(days=7, per_topic=25):
     since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
-    q = f"created:>{since} topic:llm OR topic:ai-agents OR topic:generative-ai OR topic:mcp"
-    params = urllib.parse.urlencode({"q": q, "sort": "stars", "order": "desc", "per_page": limit})
     headers = {"Accept": "application/vnd.github+json"}
     token = os.environ.get("GITHUB_TOKEN")  # optional: raises rate limit from 10 to 30 search req/min
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    data = _get(f"https://api.github.com/search/repositories?{params}", headers=headers)
-    out = []
-    for r in data.get("items", []):
-        topics = " ".join(r.get("topics") or [])
-        out.append({
-            "source": "github",
-            "id": f"gh:{r.get('full_name')}",
-            "title": r.get("full_name", ""),
-            "text": f"{r.get('full_name','')} {r.get('description') or ''} {topics}",
-            "url": r.get("html_url"),
-            "engagement": float(r.get("stargazers_count") or 0),
-            "published": r.get("created_at"),
-        })
+    seen, out = set(), []
+    for topic in GH_TOPICS:
+        params = urllib.parse.urlencode({"q": f"created:>{since} topic:{topic}", "sort": "stars",
+                                         "order": "desc", "per_page": per_topic})
+        data = _get(f"https://api.github.com/search/repositories?{params}", headers=headers)
+        for r in data.get("items", []):
+            name = r.get("full_name", "")
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            topics = " ".join(r.get("topics") or [])
+            out.append({
+                "source": "github",
+                "id": f"gh:{name}",
+                "title": name,
+                "text": f"{name} {r.get('description') or ''} {topics}",
+                "url": r.get("html_url"),
+                "engagement": float(r.get("stargazers_count") or 0),
+                "published": r.get("created_at"),
+            })
     return out
 
 
