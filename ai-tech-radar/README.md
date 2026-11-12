@@ -17,12 +17,15 @@ AgentCore Gateway  ─┴─▶ API Lambda (REST + 3 MCP tools)
 
 ## Prerequisites
 - AWS account with admin (sandbox) access, AWS CLI v2, AWS SAM CLI, Python 3.13
-- Amazon Bedrock model access for the model in `ModelId` (default `global.anthropic.claude-sonnet-5-5`).
-  First-time Anthropic use may require submitting use-case details in the Bedrock console.
+- Optional: Amazon Bedrock quota for the model in `ModelId` (default `global.amazon.nova-2-lite-v1:0`).
+  The stack deploys with `UseBedrock=false` (keyword mode) by default, because new AWS accounts often
+  start with zero Bedrock quota. Everything except AI labels and the briefing works in keyword mode.
+  No laptop install? Run everything from AWS CloudShell (AWS CLI, SAM CLI, git and Python 3.13 are built in).
 
 ## Deploy
 ```bash
-./scripts/deploy.sh ai-tech-radar us-east-1 you@example.com
+./scripts/deploy.sh ai-tech-radar us-east-1 you@example.com false   # keyword mode (AI off)
+./scripts/deploy.sh ai-tech-radar us-east-1 you@example.com true    # later, once Bedrock works
 ```
 Then confirm the SNS subscription email and open the `DashboardUrl` output.
 

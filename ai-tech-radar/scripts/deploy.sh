@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # One-command deploy for the AI Tech Radar lab.
-# Usage: ./scripts/deploy.sh [stack-name] [region] [alert-email]
+# Usage: ./scripts/deploy.sh [stack-name] [region] [alert-email] [use-bedrock true|false]
+# Example (keyword mode, AI off): ./scripts/deploy.sh ai-tech-radar us-east-1 you@example.com false
+# Turn AI on later:               ./scripts/deploy.sh ai-tech-radar us-east-1 you@example.com true
 set -euo pipefail
 STACK=${1:-ai-tech-radar}
 REGION=${2:-us-east-1}
 EMAIL=${3:-}
+USE_BEDROCK=${4:-false}
 cd "$(dirname "$0")/.."
 
 echo "==> Running unit tests"
@@ -13,10 +16,10 @@ python3 tests/test_logic.py
 echo "==> Building"
 sam build --region "$REGION"
 
-echo "==> Deploying stack $STACK to $REGION"
+echo "==> Deploying stack $STACK to $REGION (AI on: $USE_BEDROCK)"
 sam deploy --stack-name "$STACK" --region "$REGION" --resolve-s3 \
   --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset \
-  --parameter-overrides AlertEmail="$EMAIL"
+  --parameter-overrides AlertEmail="$EMAIL" UseBedrock="$USE_BEDROCK"
 
 out() { aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" \
   --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }

@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from taxonomy import canonical_names, keyword_match
 
-MODEL_ID = os.environ.get("MODEL_ID", "global.anthropic.claude-sonnet-5-5")
+MODEL_ID = os.environ.get("MODEL_ID", "global.amazon.nova-2-lite-v1:0")
 BATCH = int(os.environ.get("EXTRACT_BATCH", "40"))
 WORKERS = int(os.environ.get("EXTRACT_WORKERS", "4"))
 

@@ -5,10 +5,18 @@ Description: >
   Amazon Bedrock, ranks and forecasts technology momentum, serves a dashboard, REST API and MCP tools.
 
 Parameters:
+  UseBedrock:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Turn the AI (Amazon Bedrock) on or off. "false" = keyword mode: collection, ranking, forecast,
+      dashboard and API all still work, without AI labels or the briefing. New AWS accounts often start
+      with zero Bedrock quota, so the lab starts with "false"; switch to "true" once a model call works.
   ModelId:
     Type: String
-    Default: global.anthropic.claude-sonnet-5-5
-    Description: Bedrock model or inference-profile ID used for extraction and briefing. Swap for a cheaper model you have access to.
+    Default: global.amazon.nova-2-lite-v1:0
+    Description: Bedrock model or inference-profile ID used for extraction and briefing (used only when UseBedrock is "true").
   AlertEmail:
     Type: String
     Default: ""
@@ -27,6 +35,10 @@ Parameters:
 
 Conditions:
   HasEmail: !Not [!Equals [!Ref AlertEmail, ""]]
+  UseAI: !Equals [!Ref UseBedrock, "true"]
+  BriefingOn: !And
+    - !Condition UseAI
+    - !Equals [!Ref EnableBriefing, "true"]
 
 Globals:
   Function:
@@ -199,7 +211,7 @@ Resources:
       Environment:
         Variables:
           RANKER_FUNCTION: !Ref RankerFunction
-          USE_BEDROCK: "true"
+          USE_BEDROCK: !Ref UseBedrock
       Policies:
         - DynamoDBCrudPolicy: {TableName: !Ref Table}
         - S3WritePolicy: {BucketName: !Ref RawBucket}
@@ -230,7 +242,7 @@ Resources:
       Environment:
         Variables:
           ALERT_TOPIC_ARN: !Ref AlertTopic
-          ENABLE_BRIEFING: !Ref EnableBriefing
+          ENABLE_BRIEFING: !If [BriefingOn, "true", "false"]
       Policies:
         - DynamoDBReadPolicy: {TableName: !Ref Table}
         - S3CrudPolicy: {BucketName: !Ref WebBucket}
@@ -294,6 +306,7 @@ Resources:
 
   ExtractFallbackAlarm:
     Type: AWS::CloudWatch::Alarm
+    Condition: UseAI
     Properties:
       AlarmDescription: Bedrock extraction failing - pipeline running on keyword fallback
       Namespace: AITechRadar

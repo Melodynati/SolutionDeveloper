@@ -22,7 +22,7 @@ WEB_BUCKET = os.environ["WEB_BUCKET"]
 RAW_BUCKET = os.environ["RAW_BUCKET"]
 TOPIC_ARN = os.environ.get("ALERT_TOPIC_ARN", "")
 ENABLE_BRIEFING = os.environ.get("ENABLE_BRIEFING", "true").lower() == "true"
-MODEL_ID = os.environ.get("MODEL_ID", "global.anthropic.claude-sonnet-5-5")
+MODEL_ID = os.environ.get("MODEL_ID", "global.amazon.nova-2-lite-v1:0")
 DAYS = 14
 LATEST_KEY = "data/latest.json"
 
